@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GOS Monitor | Mediálny monitoring</title>
+<style>
+:root {
+  --green: #087f5b;
+  --bg: #f4f7f6;
+  --border: #e2e9e5;
+  --muted: #718078;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: #192820;
+  font-family: Arial, sans-serif;
+}
+header {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 22px;
+}
+.header-inner, main {
+  max-width: 1050px;
+  margin: auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.logo {
+  background: var(--green);
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  border-radius: 12px;
+  padding: 12px 15px;
+}
+.brand h1 { margin: 0; font-size: 21px; }
+.brand p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+main { padding: 28px 18px; }
+.intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+.intro h2 { margin: 0 0 8px; font-size: 25px; }
+.intro p { margin: 0; color: var(--muted); line-height: 1.5; }
+.count {
+  background: white;
+  border: 1px solid var(--border);
+  padding: 16px 22px;
+  border-radius: 12px;
+}
+.count span { display: block; color: var(--muted); font-size: 12px; }
+.count strong { display: block; font-size: 26px; margin-top: 6px; }
+.toolbar {
+  margin: 25px 0 18px;
+  padding: 16px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+input, select, button {
+  font: inherit;
+  border-radius: 8px;
+  padding: 12px;
+}
+input, select {
+  border: 1px solid #d9e2dd;
+  background: white;
+}
+input { width: 100%; margin-bottom: 12px; }
+.controls { display: flex; gap: 10px; flex-wrap: wrap; }
+.controls select { flex: 1; min-width: 150px; }
+button {
+  border: 0;
+  background: var(--green);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+button:disabled { opacity: .6; cursor: wait; }
+.notice {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 15px 0;
+}
+#results { display: grid; gap: 12px; }
+.article {
+  padding: 19px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.meta { color: var(--muted); font-size: 12px; }
+.article h3 { margin: 10px 0; font-size: 17px; line-height: 1.4; }
+.article a { color: var(--green); font-weight: bold; font-size: 13px; }
+.empty {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  line-height: 1.6;
+}
+footer {
+  text-align: center;
+  padding: 28px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media(max-width:600px) {
+  .intro h2 { font-size: 21px; }
+  .count { width: 100%; }
+  .controls button { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner brand">
+    <div class="logo">G</div>
+    <div>
+      <h1>GOS Monitor</h1>
+      <p>Mediálny monitoring · Gemerské osvetové stredisko</p>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="intro">
+    <div>
+      <h2>Mediálne zmienky</h2>
+      <p>Vyhľadávanie článkov a správ o Gemerskom osvetovom stredisku.</p>
+    </div>
+    <div class="count">
+      <span>Nájdené články</span>
+      <strong id="count">—</strong>
+    </div>
+  </section>
+  <section class="toolbar">
+    <input id="search" placeholder="Hľadať článok, médium alebo kľúčové slovo...">
+    <div class="controls">
+      <select id="period">
+        <option value="7">Posledných 7 dní</option>
+        <option value="30" selected>Posledných 30 dní</option>
+        <option value="90">Posledných 90 dní</option>
+        <option value="365">Posledný rok</option>
+        <option value="0">Všetky dostupné dátumy</option>
+      </select>
+      <button id="refresh">Načítať články</button>
+      <button id="export">Export CSV</button>
+    </div>
+  </section>
+  <p class="notice" id="status">
+    Pripravené na načítanie článkov.
+  </p>
+  <section id="results">
+    <div class="empty">
+      Klikni na „Načítať články“ a skúsime vyhľadať dostupné správy.
+    </div>
+  </section>
+</main>
+<footer>
+  GOS Monitor · Zdroje článkov závisia od dostupnosti vyhľadávacích služieb.
+</footer>
+<script>
+const terms = [
+  '"Gemerské osvetové stredisko"',
+  '"Gemerske osvetove stredisko"',
+  '"GOS Rožňava"'
+];
+let articles = [];
+const $ = id => document.getElementById(id);
+function safeDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+function escapeHTML(value = "") {
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+async function loadArticles() {
+  $("refresh").disabled = true;
+  $("status").textContent = "Načítavam dostupné články...";
+  $("results").innerHTML = "";
+  let failures = 0;
+  let collected = [];
+  for (const term of terms) {
+    try {
+      const endpoint =
+        "https://news.google.com/rss/search?q=" +
+        encodeURIComponent(term) +
+        "&hl=sk&gl=SK&ceid=SK:sk";
+      // Verejný RSS zdroj môže blokovať priame požiadavky z prehliadača.
+      // Použijeme verejný CORS proxy ako alternatívnu cestu.
+      const proxy =
+        "https://api.allorigins.win/raw?url=" +
+        encodeURIComponent(endpoint);
+      const response = await fetch(proxy);
+      if (!response.ok) throw new Error("Zdroj nie je dostupný");
+      const xml = new DOMParser().parseFromString(
+        await response.text(),
+        "text/xml"
+      );
+      if (xml.querySelector("parsererror")) {
+        throw new Error("Neplatná odpoveď RSS");
+      }
+      const items = [...xml.querySelectorAll("item")];
+      collected.push(...items.map(item => ({
+        title: item.querySelector("title")?.textContent?.trim() || "",
+        url: item.querySelector("link")?.textContent?.trim() || "",
+        source:
+          item.querySelector("source")?.textContent?.trim() ||
+          "Google News",
+        date: safeDate(
+          item.querySelector("pubDate")?.textContent || ""
+        )
+      })).filter(item => item.title && item.url));
+    } catch (error) {
+      failures++;
+    }
+  }
+  const unique = new Map();
+  collected.forEach(article => {
+    if (!unique.has(article.url)) unique.set(article.url, article);
+  });
+  articles = [...unique.values()].sort(
+    (a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0)
+  );
+  $("refresh").disabled = false;
+  render();
+  if (articles.length) {
+    $("status").textContent =
+      `Načítaných ${articles.length} jedinečných článkov zo služby Google News.` +
+      (failures ? " Niektoré vyhľadávania neboli dostupné." : "");
+  } else {
+    $("status").textContent =
+      "Články sa nepodarilo načítať. Zdroj môže blokovať požiadavky z prehliadača. " +
+      "Skús to neskôr alebo pripoj serverové API.";
+  }
+}
+function render() {
+  const query = $("search").value.toLowerCase().trim();
+  const days = Number($("period").value);
+  const cutoff = days
+    ? Date.now() - days * 24 * 60 * 60 * 1000
+    : 0;
+  const filtered = articles.filter(article => {
+    const matchesQuery =
+      (article.title + " " + article.source).toLowerCase().includes(query);
+    const matchesDate =
+      !article.date || !cutoff || article.date.getTime() >= cutoff;
+    return matchesQuery && matchesDate;
+  });
+  $("count").textContent = filtered.length;
+  if (!filtered.length) {
+    $("results").innerHTML =
+      '<div class="empty">Žiadne dostupné články pre tento filter.</div>';
+    return;
+  }
+  $("results").innerHTML = filtered.map(article => `
+    <article class="article">
+      <div class="meta">
+        ${escapeHTML(article.source)} ·
+        ${article.date ? escapeHTML(article.date.toLocaleDateString("sk-SK")) : "Dátum neuvedený"}
+      </div>
+      <h3>${escapeHTML(article.title)}</h3>
+      <a href="${escapeHTML(article.url)}" target="_blank" rel="noopener noreferrer">
+        Otvoriť pôvodný článok ↗
+      </a>
+    </article>
+  `).join("");
+}
+$("refresh").addEventListener("click", loadArticles);
+$("search").addEventListener("input", render);
+$("period").addEventListener("change", render);
+$("export").addEventListener("click", () => {
+  const rows = [
+    ["Názov", "Zdroj", "Dátum", "URL"],
+    ...articles.map(a => [
+      a.title,
+      a.source,
+      a.date ? a.date.toISOString() : "",
+      a.url
+    ])
+  ];
+  const csv = "\uFEFF" + rows.map(row =>
+    row.map(value =>
+      '"' + String(value).replace(/"/g, '""') + '"'
+    ).join(";")
+  ).join("\r\n");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(
+    new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  );
+  link.download = "gos-monitor-clanky.csv";
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+loadArticles();
+</script>
+</body>
+</html>
